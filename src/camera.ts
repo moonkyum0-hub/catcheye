@@ -13,7 +13,8 @@ export interface CameraHandle {
 
 export type CameraResult =
   | { ok: true; handle: CameraHandle }
-  // 이 모듈은 단위 테스트가 없다. 런타임 진단이 유일한 안전망이므로 원본 에러를 버리지 않는다.
+  // startCamera 자체(DOM/getUserMedia를 건드리는 부분)는 단위 테스트가 없다.
+  // 런타임 진단이 그쪽의 유일한 안전망이므로 원본 에러를 버리지 않는다.
   | { ok: false; error: CameraError; cause?: unknown };
 
 /**
@@ -22,7 +23,7 @@ export type CameraResult =
  * `TrackStartError` / `ConstraintNotSatisfiedError`는 `NavigatorUserMediaError`로
  * 던져지곤 했다. `DOMException`만 보면 정작 그 이름을 쓰는 엔진에서 죽은 분기가 된다.
  */
-function errorName(error: unknown): string {
+export function errorName(error: unknown): string {
   return typeof error === 'object' &&
     error !== null &&
     'name' in error &&
@@ -31,7 +32,7 @@ function errorName(error: unknown): string {
     : '';
 }
 
-function classifyAcquireError(error: unknown): CameraError {
+export function classifyAcquireError(error: unknown): CameraError {
   const name = errorName(error);
   if (name === 'NotAllowedError' || name === 'SecurityError') return 'permission-denied';
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') return 'no-device';

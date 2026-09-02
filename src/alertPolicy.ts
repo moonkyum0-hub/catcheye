@@ -21,10 +21,10 @@ export const COOLDOWN_MS = 60_000;
 export const MICROSLEEP_RECENCY_MS = 2_000;
 
 export interface AlertState {
-  armed: boolean;
-  lastAlertAt: number | null;
+  readonly armed: boolean;
+  readonly lastAlertAt: number | null;
   /** 쿨다운을 시작시킨 이벤트의 종류. 아직 경고가 없었으면 null. */
-  lastAlertType: AlertEvent['type'] | null;
+  readonly lastAlertType: AlertEvent['type'] | null;
 }
 
 /**
@@ -64,7 +64,7 @@ export const INITIAL_ALERT_STATE: Readonly<AlertState> = Object.freeze({
 });
 
 export function updateAlert(
-  state: AlertState,
+  state: Readonly<AlertState>,
   input: AlertInput,
 ): { state: AlertState; event: AlertEvent | null } {
   const { perclos, longestClosedMs, longestClosedEndedAt, saturated, now } = input;

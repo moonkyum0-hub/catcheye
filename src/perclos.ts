@@ -42,6 +42,17 @@ export interface PerclosResult {
  * 전제: `samples`는 `t` 오름차순이다. 정렬을 강제하지 않는 것은 비용 때문이다.
  * 전제가 깨져 구간 길이가 음수로 나오면 그 구간은 통계에서 제외한다 —
  * 음수 평균 깜빡임 시간 같은 무의미한 숫자를 내보내지 않기 위해서다.
+ *
+ * **저프레임 구간에 대한 계약.** 결과의 시간 기반 지표(`longestClosedMs`, `saturated`)는
+ * 연속된 샘플 간격이 `MAX_SAMPLE_GAP_MS` 이하로 유지될 때만 의미가 있다. 캡처가 느려져
+ * 간격이 계속 그 값을 넘으면(초당 4프레임 미만) 모든 연속 쌍이 공백으로 판정되어 감김
+ * 구간이 매번 끊기고 `observedMs`도 쌓이지 않는다 — `longestClosedMs`는 영원히 0에
+ * 머물고 `saturated`도 절대 true가 되지 않는다. `observedMs / windowSpanMs`가 낮다는
+ * 것은 이 두 지표가 구조적으로 억제됐다는 뜻이지 "이상 없음"이 아니다. **"모른다"로
+ * 읽어야 한다.** `validRatio`는 프레임 개수 비율이지 시간 비율이 아니라서 이 상황을
+ * 잡아내지 못하며, `value`는 그 와중에도 정상적인 숫자(자고 있으면 1에 가까운 값)를
+ * 그대로 낸다. 이 조합 — 시간 기반 지표는 0, `value`는 정상 — 을 소비자가, 특히
+ * 그룹 모드의 네트워크 계층이 "이상 없음"으로 broadcast해서는 안 된다.
  */
 export function analyzeWindow(
   samples: readonly FrameSample[],

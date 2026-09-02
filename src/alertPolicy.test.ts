@@ -91,13 +91,19 @@ describe('updateAlert', () => {
       saturated: false,
       now: 0,
     });
-    const second = updateAlert(first.state, {
-      perclos: 0.3,
-      longestClosedMs: 0,
-      longestClosedEndedAt: null,
-      saturated: false,
-      now: 30_000,
-    });
+    // armed를 다시 true로 되돌려야 perclos 후보가 실제로 만들어져
+    // 등급 비교(1 ≤ 1)가 억제를 수행하는지 검증할 수 있다. armed가 그대로 false면
+    // 애초에 후보가 생기지 않아 쿨다운 로직을 지워도 이 테스트는 통과한다.
+    const second = updateAlert(
+      { ...first.state, armed: true },
+      {
+        perclos: 0.3,
+        longestClosedMs: 0,
+        longestClosedEndedAt: null,
+        saturated: false,
+        now: 30_000,
+      },
+    );
     expect(second.event).toBeNull();
   });
 

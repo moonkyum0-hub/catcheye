@@ -70,7 +70,11 @@ describe('analyzeWindow', () => {
       { t: 1499, state: 'closed' },
       { t: 1600, state: 'open' },
     ];
-    expect(analyzeWindow(samples, 1600).longestClosedMs).toBeCloseTo(499, 10);
+    const result = analyzeWindow(samples, 1600);
+    expect(result.longestClosedMs).toBeCloseTo(499, 10);
+    // 간격 250(1000→1250), 249(1250→1499), 101(1499→1600) 전부 MAX_SAMPLE_GAP_MS(250ms)
+    // 이하라 공백 없이 전부 관측됐다. 250+249+101 = 600 = span(1600-1000)과 같아야 한다.
+    expect(result.observedMs).toBe(600);
   });
 
   it('미세수면 경계를 넘는 구간을 잡아낸다', () => {
@@ -197,6 +201,11 @@ describe('analyzeWindow', () => {
     ];
     const result = analyzeWindow(samples, 60_000);
     expect(result.longestClosedMs).toBe(0);
+    // 공백을 사이에 둔 단독 closed 샘플 두 개가 길이 0인 "깜빡임" 두 번으로 세어진다.
+    // 관측하지 못한 시간에 대해 "0ms 깜빡임 2회"가 나오는 것은 부작용이지만,
+    // 고치지 않고 현재 동작 그대로 여기 문서화해 둔다.
+    expect(result.blinkCount).toBe(2);
+    expect(result.meanBlinkMs).toBe(0);
   });
 
   it('공백이 있으면 포화로 보지 않는다', () => {
@@ -254,5 +263,20 @@ describe('analyzeWindow', () => {
     expect(result.meanBlinkMs).toBeNull();
     expect(result.longestClosedMs).toBe(0);
     expect(result.longestClosedEndedAt).toBeNull();
+  });
+
+  it('저프레임 구간에서는 시간 기반 지표가 억제된다', () => {
+    // 300ms 간격(초당 4프레임 미만)은 MAX_SAMPLE_GAP_MS(250ms)를 항상 넘는다.
+    // 모든 연속 쌍이 공백으로 판정되어 감김 구간이 매번 끊기고 observedMs도
+    // 쌓이지 않는다. 그런데 value는 프레임 개수 비율이라 자는 사람에게 그대로
+    // 1을 낸다 — 시간 기반 지표는 조용히 죽어 있는데 value만 정상으로 보이는
+    // 조합이 버벅이는 기계에서 "이상 없음"으로 방송될 위험을 여기서 못박는다.
+    const samples: FrameSample[] = [];
+    for (let t = 0; t <= 60_000; t += 300) samples.push({ t, state: 'closed' });
+    const result = analyzeWindow(samples, 60_000);
+    expect(result.longestClosedMs).toBe(0);
+    expect(result.saturated).toBe(false);
+    expect(result.observedMs).toBe(0);
+    expect(result.value).toBe(1);
   });
 });
