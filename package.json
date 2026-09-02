@@ -1,0 +1,21 @@
+{
+  "name": "perclos",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "check": "tsc --noEmit && vitest run",
+    "assets": "node scripts/copy-assets.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^1.0.1"
+  }
+}
