@@ -878,6 +878,11 @@ git add src/perclos.ts src/perclos.test.ts && git commit -m "feat: 60초 창에�
 
 ### Task 5: 경고 정책 (쿨다운과 재무장)
 
+> **실행 중 수정됨 (커밋 67b5015).** 아래 판정 순서는 미세수면을 재무장 게이트 뒤에 두는데,
+> 그러면 실제로 잠들었을 때 PERCLOS가 8% 아래로 내려오지 않아 영원히 재무장되지 않고
+> 프로그램이 침묵한다. 미세수면 검사를 재무장 게이트 **앞으로** 옮겼다. 설계 문서 참고.
+
+
 **Files:**
 - Create: `src/alertPolicy.ts`
 - Test: `src/alertPolicy.test.ts`
