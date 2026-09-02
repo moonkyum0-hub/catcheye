@@ -120,4 +120,57 @@ describe('updateAlert', () => {
     });
     expect(during.state.armed).toBe(false);
   });
+
+  it('무장 해제 상태여도 미세수면이면 경고한다', () => {
+    const first = updateAlert(INITIAL_ALERT_STATE, { perclos: 0.2, longestClosedMs: 0, now: 0 });
+    expect(first.state.armed).toBe(false);
+
+    const second = updateAlert(first.state, {
+      perclos: 0.95,
+      longestClosedMs: 5000,
+      now: 70_000,
+    });
+    expect(second.event?.type).toBe('microsleep');
+  });
+
+  it('쿨다운 중에는 미세수면도 경고하지 않는다', () => {
+    const first = updateAlert(INITIAL_ALERT_STATE, { perclos: 0.2, longestClosedMs: 0, now: 0 });
+    expect(first.state.armed).toBe(false);
+
+    const second = updateAlert(first.state, {
+      perclos: 0.95,
+      longestClosedMs: 5000,
+      now: 30_000,
+    });
+    expect(second.event).toBeNull();
+  });
+
+  it('PERCLOS가 정확히 8%면 재무장하지 않는다', () => {
+    const first = updateAlert(INITIAL_ALERT_STATE, { perclos: 0.2, longestClosedMs: 0, now: 0 });
+    const second = updateAlert(first.state, {
+      perclos: 0.08,
+      longestClosedMs: 0,
+      now: 70_000,
+    });
+    expect(second.state.armed).toBe(false);
+  });
+
+  it('미세수면이 정확히 500ms면 경고한다', () => {
+    const result = updateAlert(INITIAL_ALERT_STATE, {
+      perclos: 0.02,
+      longestClosedMs: 500,
+      now: 1000,
+    });
+    expect(result.event?.type).toBe('microsleep');
+  });
+
+  it('마지막 경고로부터 정확히 60초가 지나면 쿨다운이 끝난다', () => {
+    const first = updateAlert(INITIAL_ALERT_STATE, { perclos: 0.2, longestClosedMs: 0, now: 0 });
+    const second = updateAlert(first.state, {
+      perclos: 0.05,
+      longestClosedMs: 0,
+      now: 60_000,
+    });
+    expect(second.state.armed).toBe(true);
+  });
 });

@@ -31,19 +31,22 @@ export function updateAlert(
 
   if (inCooldown) return { state, event: null };
 
+  // 미세수면은 재무장 게이트를 우회한다. 실제로 잠들면 PERCLOS가 재무장 값 아래로
+  // 내려오지 않아 영원히 재무장되지 않고, 정작 깨워야 할 사람에게 침묵하게 된다.
+  // 연타 방지는 쿨다운이 담당한다.
+  if (longestClosedMs >= MICROSLEEP_MS) {
+    return {
+      state: { armed: false, lastAlertAt: now },
+      event: { type: 'microsleep', value: longestClosedMs, at: now },
+    };
+  }
+
   if (!state.armed) {
     // 임계 근처에서 경고가 연타되는 것을 막는다. 충분히 내려와야 다시 무장한다.
     if (perclos !== null && perclos < PERCLOS_REARM) {
       return { state: { ...state, armed: true }, event: null };
     }
     return { state, event: null };
-  }
-
-  if (longestClosedMs >= MICROSLEEP_MS) {
-    return {
-      state: { armed: false, lastAlertAt: now },
-      event: { type: 'microsleep', value: longestClosedMs, at: now },
-    };
   }
 
   if (perclos !== null && perclos >= PERCLOS_ALERT) {
