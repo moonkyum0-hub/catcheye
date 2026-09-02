@@ -1113,6 +1113,12 @@ git add src/alertPolicy.ts src/alertPolicy.test.ts && git commit -m "feat: 쿨�
 
 ### Task 6: 카메라와 얼굴 랜드마크 (I/O)
 
+> **실행 중 수정됨 (커밋 `af29075`).** 아래 `startCamera`는 `getUserMedia`와 `video.play()`를
+> 하나의 try/catch로 묶는데, 그러면 스트림 획득 후 재생이 실패했을 때 스트림이 try 스코프에
+> 갇혀 아무도 카메라를 끌 수 없다. 두 단계를 분리하고 재생 실패에 `playback-failed` 코드를
+> 추가했다. `CameraError`는 이제 네 가지다.
+
+
 **Files:**
 - Create: `src/camera.ts`, `src/faceTracker.ts`, `scripts/copy-assets.mjs`
 
