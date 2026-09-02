@@ -111,4 +111,88 @@ describe('analyzeWindow', () => {
     const samples = frames(['open', 30]);
     expect(analyzeWindow(samples, lastTime(samples)).meanBlinkMs).toBeNull();
   });
+
+  it('최장 감김 구간의 종료 시각을 함께 보고한다', () => {
+    const samples: FrameSample[] = [
+      { t: 0, state: 'open' },
+      { t: 100, state: 'closed' },
+      { t: 300, state: 'closed' }, // 200ms 구간, 300에 끝남
+      { t: 400, state: 'open' },
+      { t: 500, state: 'closed' },
+      { t: 900, state: 'closed' }, // 400ms 구간, 900에 끝남 — 이쪽이 더 길다
+      { t: 1000, state: 'open' },
+    ];
+    const result = analyzeWindow(samples, 1000);
+    expect(result.longestClosedMs).toBeCloseTo(400, 10);
+    expect(result.longestClosedEndedAt).toBe(900);
+  });
+
+  it('길이가 같은 구간이 둘이면 먼저 나온 구간의 종료 시각을 쓴다', () => {
+    const samples: FrameSample[] = [
+      { t: 100, state: 'closed' },
+      { t: 300, state: 'closed' },
+      { t: 400, state: 'open' },
+      { t: 500, state: 'closed' },
+      { t: 700, state: 'closed' },
+      { t: 800, state: 'open' },
+    ];
+    const result = analyzeWindow(samples, 800);
+    expect(result.longestClosedMs).toBeCloseTo(200, 10);
+    expect(result.longestClosedEndedAt).toBe(300);
+  });
+
+  it('감김 구간이 없으면 종료 시각은 null이다', () => {
+    const samples = frames(['open', 30]);
+    const result = analyzeWindow(samples, lastTime(samples));
+    expect(result.longestClosedEndedAt).toBeNull();
+    expect(result.longestClosedMs).toBe(0);
+  });
+
+  it('샘플이 없으면 창 길이는 0이고 포화도 아니다', () => {
+    const result = analyzeWindow([], 0);
+    expect(result.longestClosedEndedAt).toBeNull();
+    expect(result.windowSpanMs).toBe(0);
+    expect(result.saturated).toBe(false);
+  });
+
+  it('창이 다 차고 PERCLOS가 95% 이상이면 포화로 표시한다', () => {
+    // 60초치 1800프레임 전부 감김. span = 1799 * (1000/30) ≈ 59966.7ms ≥ 60000 * 0.9
+    const samples = frames(['closed', 1800]);
+    const result = analyzeWindow(samples, lastTime(samples));
+    expect(result.value).toBeCloseTo(1, 10);
+    expect(result.windowSpanMs).toBeGreaterThanOrEqual(54000);
+    expect(result.saturated).toBe(true);
+  });
+
+  it('창이 덜 찼으면 PERCLOS가 100%여도 포화가 아니다', () => {
+    // 30fps로 10초치(300프레임)만. span = 299 * (1000/30) ≈ 9966.7ms < 54000
+    const samples = frames(['closed', 300]);
+    const result = analyzeWindow(samples, lastTime(samples));
+    expect(result.value).toBeCloseTo(1, 10);
+    expect(result.windowSpanMs).toBeLessThan(54000);
+    expect(result.saturated).toBe(false);
+  });
+
+  it('PERCLOS가 94%면 포화가 아니다', () => {
+    // 1800프레임 중 1692 감김 = 0.94. 창은 다 찼지만 포화 경계 아래다.
+    const samples = frames(['closed', 1692], ['open', 108]);
+    const result = analyzeWindow(samples, lastTime(samples));
+    expect(result.value).toBeCloseTo(0.94, 10);
+    expect(result.windowSpanMs).toBeGreaterThanOrEqual(54000);
+    expect(result.saturated).toBe(false);
+  });
+
+  it('시각이 역순인 구간은 깜빡임 통계에서 제외한다', () => {
+    const samples: FrameSample[] = [
+      { t: 0, state: 'open' },
+      { t: 500, state: 'closed' },
+      { t: 200, state: 'closed' }, // 역순 — 구간 길이가 -300ms가 된다
+      { t: 600, state: 'open' },
+    ];
+    const result = analyzeWindow(samples, 600);
+    expect(result.blinkCount).toBe(0);
+    expect(result.meanBlinkMs).toBeNull();
+    expect(result.longestClosedMs).toBe(0);
+    expect(result.longestClosedEndedAt).toBeNull();
+  });
 });

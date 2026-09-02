@@ -1,4 +1,10 @@
-export type CameraError = 'permission-denied' | 'no-device' | 'playback-failed' | 'unknown';
+export type CameraError =
+  | 'permission-denied'
+  | 'no-device'
+  | 'device-busy'
+  | 'constraints-unsatisfiable'
+  | 'playback-failed'
+  | 'unknown';
 
 export interface CameraHandle {
   video: HTMLVideoElement;
@@ -7,12 +13,19 @@ export interface CameraHandle {
 
 export type CameraResult =
   | { ok: true; handle: CameraHandle }
-  | { ok: false; error: CameraError };
+  // 이 모듈은 단위 테스트가 없다. 런타임 진단이 유일한 안전망이므로 원본 에러를 버리지 않는다.
+  | { ok: false; error: CameraError; cause?: unknown };
 
 function classifyAcquireError(error: unknown): CameraError {
   const name = error instanceof DOMException ? error.name : '';
   if (name === 'NotAllowedError' || name === 'SecurityError') return 'permission-denied';
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') return 'no-device';
+  // 화상통화를 켠 채로 이 도구를 쓰는 것이 그룹 모드의 기본 사용 방식이다.
+  // 다른 앱이 카메라를 잡고 있는 상황은 예외가 아니라 가장 흔한 실패다.
+  if (name === 'NotReadableError' || name === 'TrackStartError') return 'device-busy';
+  if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
+    return 'constraints-unsatisfiable';
+  }
   return 'unknown';
 }
 
@@ -24,7 +37,7 @@ export async function startCamera(): Promise<CameraResult> {
       audio: false,
     });
   } catch (error) {
-    return { ok: false, error: classifyAcquireError(error) };
+    return { ok: false, error: classifyAcquireError(error), cause: error };
   }
 
   const video = document.createElement('video');
@@ -34,13 +47,13 @@ export async function startCamera(): Promise<CameraResult> {
 
   try {
     await video.play();
-  } catch {
+  } catch (error) {
     // 스트림은 이미 열렸다. 여기서 놓아주지 않으면 카메라가 켜진 채
     // 아무도 끌 수 없는 상태로 남는다. 자동재생 차단도 NotAllowedError를
     // 던지므로 권한 거부와 섞이지 않게 별도 코드로 구분한다.
     for (const track of stream.getTracks()) track.stop();
     video.srcObject = null;
-    return { ok: false, error: 'playback-failed' };
+    return { ok: false, error: 'playback-failed', cause: error };
   }
 
   return {

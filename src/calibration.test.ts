@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildCalibration, percentile, updateOpenBaseline } from './calibration';
+import type { Calibration } from './calibration';
+import { MIN_RANGE, buildCalibration, percentile, updateOpenBaseline } from './calibration';
 
 const TENTHS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 
@@ -73,6 +74,8 @@ describe('updateOpenBaseline', () => {
     if (!base.ok) return;
 
     const updated = updateOpenBaseline(base.calibration, 0.35);
+    expect(updated).not.toBeNull();
+    if (updated === null) throw new Error('범위가 넉넉하므로 갱신돼야 한다');
     // 0.30 * 0.98 + 0.35 * 0.02 = 0.301
     expect(updated.openEar).toBeCloseTo(0.301, 10);
     expect(updated.closedEar).toBeCloseTo(0.1, 10);
@@ -85,5 +88,43 @@ describe('updateOpenBaseline', () => {
     if (!base.ok) throw new Error('보정이 성립해야 한다');
     updateOpenBaseline(base.calibration, 0.35);
     expect(base.calibration.openEar).toBeCloseTo(0.3, 10);
+  });
+
+  it('범위가 거부선 이상이면 갱신된 보정을 반환한다', () => {
+    // openEar 0.16, closedEar 0.08 (범위 정확히 0.08). 0.30이 들어오면 범위가 넓어진다.
+    const base = buildCalibration([0.16, 0.16], [0.08]);
+    if (!base.ok) throw new Error('보정이 성립해야 한다');
+
+    const updated = updateOpenBaseline(base.calibration, 0.3);
+    expect(updated).not.toBeNull();
+    if (updated === null) throw new Error('갱신된 보정이 나와야 한다');
+    // 0.16 * 0.98 + 0.30 * 0.02 = 0.1568 + 0.006 = 0.1628 -> 범위 0.0828 >= 0.08
+    expect(updated.openEar).toBeCloseTo(0.1628, 10);
+    expect(updated.openEar - updated.closedEar).toBeGreaterThanOrEqual(MIN_RANGE);
+  });
+
+  it('드리프트 결과가 거부선 아래면 null을 반환한다', () => {
+    // openEar 0.16, closedEar 0.08. rollingP75 0.15면
+    // 0.16 * 0.98 + 0.15 * 0.02 = 0.1568 + 0.003 = 0.1598 -> 범위 0.0798 < 0.08
+    const base = buildCalibration([0.16, 0.16], [0.08]);
+    if (!base.ok) throw new Error('보정이 성립해야 한다');
+    expect(updateOpenBaseline(base.calibration, 0.15)).toBeNull();
+  });
+
+  it('완만한 조명 변화가 쌓여도 거부선을 소리 없이 통과하지 않는다', () => {
+    // openEar 0.30, closedEar 0.10에 rollingP75 0.05가 계속 들어오는 상황.
+    // open_n = 0.05 + (0.30 - 0.05) * 0.98^n. 범위가 0.08 아래가 되려면 open_n < 0.18,
+    // 즉 0.98^n < 0.52 -> n > ln(0.52)/ln(0.98) = 32.37. 33번째에서 거부선을 뚫는다.
+    const base = buildCalibration([0.3, 0.3], [0.1]);
+    if (!base.ok) throw new Error('보정이 성립해야 한다');
+
+    let current: Calibration | null = base.calibration;
+    let steps = 0;
+    while (current !== null && steps < 200) {
+      current = updateOpenBaseline(current, 0.05);
+      steps += 1;
+    }
+    expect(current).toBeNull();
+    expect(steps).toBe(33);
   });
 });
