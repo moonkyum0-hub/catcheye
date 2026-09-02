@@ -416,7 +416,9 @@ describe('buildCalibration', () => {
   });
 
   it('차이가 정확히 0.08이면 통과시킨다', () => {
-    const result = buildCalibration([0.18, 0.18, 0.18], [0.1]);
+    // 0.16 - 0.08은 부동소수점에서도 정확히 0.08이다.
+    // 0.18 - 0.10 같은 쌍은 0.07999999999999999가 되어 경계 테스트가 무너진다.
+    const result = buildCalibration([0.16, 0.16, 0.16], [0.08]);
     expect(result.ok).toBe(true);
   });
 
