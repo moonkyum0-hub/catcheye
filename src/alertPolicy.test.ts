@@ -13,6 +13,7 @@ describe('updateAlert', () => {
     expect(result.event).toEqual({ type: 'perclos', perclos: 0.2, at: 1000 });
     expect(result.state.armed).toBe(false);
     expect(result.state.lastAlertAt).toBe(1000);
+    expect(result.state.lastAlertType).toBe('perclos');
   });
 
   it('정확히 15%면 경고한다', () => {
@@ -82,7 +83,7 @@ describe('updateAlert', () => {
     expect(result.state.armed).toBe(true);
   });
 
-  it('경고 후 60초 안에는 다시 경고하지 않는다', () => {
+  it('경고 후 60초 안에는 같은 급 경고가 다시 나오지 않는다', () => {
     const first = updateAlert(INITIAL_ALERT_STATE, {
       perclos: 0.2,
       longestClosedMs: 0,
@@ -92,8 +93,8 @@ describe('updateAlert', () => {
     });
     const second = updateAlert(first.state, {
       perclos: 0.3,
-      longestClosedMs: 700,
-      longestClosedEndedAt: 29_999,
+      longestClosedMs: 0,
+      longestClosedEndedAt: null,
       saturated: false,
       now: 30_000,
     });
@@ -185,7 +186,9 @@ describe('updateAlert', () => {
     expect(second.event?.type).toBe('microsleep');
   });
 
-  it('쿨다운 중에는 미세수면도 경고하지 않는다', () => {
+  it('PERCLOS 쿨다운 중이어도 미세수면은 경고한다', () => {
+    // 10초 전에 울린 가벼운 PERCLOS 경고 때문에 3초짜리 눈감김을 버리면
+    // 정작 깨워야 할 사람을 놓친다. 쿨다운은 반복을 막는 것이지 격상을 막지 않는다.
     const first = updateAlert(INITIAL_ALERT_STATE, {
       perclos: 0.2,
       longestClosedMs: 0,
@@ -193,14 +196,76 @@ describe('updateAlert', () => {
       saturated: false,
       now: 0,
     });
-    expect(first.state.armed).toBe(false);
+    expect(first.state.lastAlertType).toBe('perclos');
 
     const second = updateAlert(first.state, {
       perclos: 0.95,
-      longestClosedMs: 5000,
-      longestClosedEndedAt: 29_999,
+      longestClosedMs: 3000,
+      longestClosedEndedAt: 13_000,
       saturated: false,
-      now: 30_000,
+      now: 13_000,
+    });
+    expect(second.event).toEqual({ type: 'microsleep', closedMs: 3000, at: 13_000 });
+    expect(second.state).toEqual({ armed: false, lastAlertAt: 13_000, lastAlertType: 'microsleep' });
+  });
+
+  it('미세수면 쿨다운 중에는 미세수면이 다시 경고하지 않는다', () => {
+    const first = updateAlert(INITIAL_ALERT_STATE, {
+      perclos: 0.95,
+      longestClosedMs: 3000,
+      longestClosedEndedAt: 1000,
+      saturated: false,
+      now: 1000,
+    });
+    expect(first.event?.type).toBe('microsleep');
+
+    const second = updateAlert(first.state, {
+      perclos: 0.95,
+      longestClosedMs: 3000,
+      longestClosedEndedAt: 40_000,
+      saturated: false,
+      now: 40_000,
+    });
+    expect(second.event).toBeNull();
+  });
+
+  it('미세수면 쿨다운 중에는 PERCLOS가 경고하지 않는다', () => {
+    const first = updateAlert(INITIAL_ALERT_STATE, {
+      perclos: 0.02,
+      longestClosedMs: 3000,
+      longestClosedEndedAt: 1000,
+      saturated: false,
+      now: 1000,
+    });
+    expect(first.event?.type).toBe('microsleep');
+
+    const second = updateAlert({ ...first.state, armed: true }, {
+      perclos: 0.2,
+      longestClosedMs: 0,
+      longestClosedEndedAt: null,
+      saturated: false,
+      now: 40_000,
+    });
+    expect(second.event).toBeNull();
+  });
+
+  it('포화 쿨다운 중에는 미세수면이 경고하지 않는다', () => {
+    // 등급이 같으므로 뚫지 못한다.
+    const first = updateAlert(INITIAL_ALERT_STATE, {
+      perclos: 1,
+      longestClosedMs: 0,
+      longestClosedEndedAt: null,
+      saturated: true,
+      now: 1000,
+    });
+    expect(first.event?.type).toBe('saturated');
+
+    const second = updateAlert(first.state, {
+      perclos: 0.9,
+      longestClosedMs: 3000,
+      longestClosedEndedAt: 40_000,
+      saturated: false,
+      now: 40_000,
     });
     expect(second.event).toBeNull();
   });
@@ -293,7 +358,11 @@ describe('updateAlert', () => {
       now: 70_000,
     });
     expect(second.event).toEqual({ type: 'saturated', perclos: 1, at: 70_000 });
-    expect(second.state).toEqual({ armed: false, lastAlertAt: 70_000 });
+    expect(second.state).toEqual({
+      armed: false,
+      lastAlertAt: 70_000,
+      lastAlertType: 'saturated',
+    });
   });
 
   it('포화가 미세수면과 PERCLOS보다 우선한다', () => {
@@ -307,7 +376,7 @@ describe('updateAlert', () => {
     expect(result.event?.type).toBe('saturated');
   });
 
-  it('쿨다운 중에는 포화도 경고하지 않는다', () => {
+  it('PERCLOS 쿨다운 중이어도 포화는 경고한다', () => {
     const first = updateAlert(INITIAL_ALERT_STATE, {
       perclos: 0.2,
       longestClosedMs: 0,
@@ -322,7 +391,8 @@ describe('updateAlert', () => {
       saturated: true,
       now: 30_000,
     });
-    expect(second.event).toBeNull();
+    expect(second.event).toEqual({ type: 'saturated', perclos: 1, at: 30_000 });
+    expect(second.state.lastAlertType).toBe('saturated');
   });
 
   it('포화인데 perclos가 null이면 포화 경고를 내지 않는다', () => {
@@ -359,5 +429,6 @@ describe('updateAlert', () => {
 
   it('INITIAL_ALERT_STATE는 얼어 있어 참가자끼리 오염되지 않는다', () => {
     expect(Object.isFrozen(INITIAL_ALERT_STATE)).toBe(true);
+    expect(INITIAL_ALERT_STATE.lastAlertType).toBeNull();
   });
 });

@@ -16,8 +16,23 @@ export type CameraResult =
   // 이 모듈은 단위 테스트가 없다. 런타임 진단이 유일한 안전망이므로 원본 에러를 버리지 않는다.
   | { ok: false; error: CameraError; cause?: unknown };
 
+/**
+ * 던져진 값에서 `name`을 뽑는다. `DOMException`으로 좁히지 않는 이유가 있다 —
+ * `OverconstrainedError`는 Media Capture 스펙에서 별도 인터페이스이고, 레거시 별칭
+ * `TrackStartError` / `ConstraintNotSatisfiedError`는 `NavigatorUserMediaError`로
+ * 던져지곤 했다. `DOMException`만 보면 정작 그 이름을 쓰는 엔진에서 죽은 분기가 된다.
+ */
+function errorName(error: unknown): string {
+  return typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    typeof (error as { name: unknown }).name === 'string'
+    ? (error as { name: string }).name
+    : '';
+}
+
 function classifyAcquireError(error: unknown): CameraError {
-  const name = error instanceof DOMException ? error.name : '';
+  const name = errorName(error);
   if (name === 'NotAllowedError' || name === 'SecurityError') return 'permission-denied';
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') return 'no-device';
   // 화상통화를 켠 채로 이 도구를 쓰는 것이 그룹 모드의 기본 사용 방식이다.

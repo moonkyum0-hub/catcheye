@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AlertEvent } from './alertPolicy';
-import { INITIAL_ALERT_STATE, MICROSLEEP_RECENCY_MS, updateAlert } from './alertPolicy';
+import { COOLDOWN_MS, INITIAL_ALERT_STATE, MICROSLEEP_RECENCY_MS, updateAlert } from './alertPolicy';
 import type { Calibration } from './calibration';
 import { buildCalibration } from './calibration';
 import { classifyFrame } from './frameState';
@@ -130,8 +130,10 @@ describe('파이프라인 조합', () => {
     // 60초 이후 EAR이 0.11로 주저앉는다. 눈은 뜨고 있지만 closedThreshold 0.14 아래라
     // 모든 프레임이 closed로 찍힌다. 이때 코어가 할 정직한 말은 "PERCLOS가 높다"가 아니라
     // "값이 포화됐다 — 자는 중이거나 보정이 깨졌다"이다.
+    // 6분을 돌린다. 한 번 알리고 끝나는 것으로는 부족하다 — 자는 사람에게는
+    // 그 상태가 지속되는 동안 계속 경고가 가야 한다.
     const calibration = baseCalibration();
-    const ears = awakeEars(180);
+    const ears = awakeEars(360);
     for (let i = 60 * FPS; i < ears.length; i += 1) ears[i] = 0.11;
 
     const { events, samples } = runPipeline(ears, calibration);
@@ -144,6 +146,20 @@ describe('파이프라인 조합', () => {
     // 붕괴 이후로는 perclos 경고가 되풀이되는 것이 아니라 포화로 수렴해야 한다.
     expect(events.at(-1)?.type).toBe('saturated');
     expect(events.some((event) => event.type === 'perclos')).toBe(false);
+
+    // 포화가 계속되는 동안 쿨다운 주기마다 다시 알린다.
+    const saturatedAt = events
+      .filter((event) => event.type === 'saturated')
+      .map((event) => event.at);
+    expect(saturatedAt.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < saturatedAt.length; i += 1) {
+      const prev = saturatedAt[i - 1];
+      const current = saturatedAt[i];
+      if (prev === undefined || current === undefined) throw new Error('시각이 있어야 한다');
+      // 틱이 1초 간격이므로 쿨다운 60초 직후 첫 틱에서 발화한다.
+      expect(current - prev).toBeGreaterThanOrEqual(COOLDOWN_MS);
+      expect(current - prev).toBeLessThanOrEqual(COOLDOWN_MS + TICK_MS);
+    }
   });
 
   it('자리를 비워 얼굴이 계속 잡히지 않으면 값도 경고도 내지 않는다', () => {

@@ -10,6 +10,12 @@ export const MIN_VALID_RATIO = 0.5;
 export const SATURATION_PERCLOS = 0.95;
 /** 창이 이 비율만큼 차야 포화 판정을 신뢰한다. 시작 직후 오판을 막는다. */
 const SATURATION_MIN_SPAN = 0.9;
+/**
+ * 연속된 두 샘플이 이보다 멀면 그 사이는 관측하지 않은 구간이다.
+ * 30fps에서 프레임 간격은 33ms이므로 250ms는 프레임 몇 개를 놓친 정도까지만 허용한다.
+ * 탭이 숨겨져 캡처 루프가 멈춘 구간을 감김으로 세지 않기 위한 것이다.
+ */
+export const MAX_SAMPLE_GAP_MS = 250;
 
 export interface PerclosResult {
   value: number | null;
@@ -17,8 +23,13 @@ export interface PerclosResult {
   longestClosedMs: number;
   /** 최장 감김 구간의 마지막 프레임 시각. 감김 구간이 없으면 null. */
   longestClosedEndedAt: number | null;
-  /** 창 안 첫 샘플과 마지막 샘플의 시각 차이. 창이 얼마나 찼는지 판단용. */
+  /**
+   * 창 안 첫 샘플과 마지막 샘플의 시각 차이. **관측 시간이 아니라 양 끝의 거리다** —
+   * 중간에 캡처가 멈춘 공백을 모른다. 진단용으로만 쓰고, 포화 판정에는 `observedMs`를 쓴다.
+   */
   windowSpanMs: number;
+  /** 연속된 샘플 사이 간격 중 MAX_SAMPLE_GAP_MS 이하인 것만 더한 값. 실제로 관측한 시간. */
+  observedMs: number;
   /** 창이 거의 다 찼는데 PERCLOS가 포화 수준이면 true. 자는 중이거나 보정이 깨진 상태. */
   saturated: boolean;
   blinkCount: number;
@@ -49,6 +60,7 @@ export function analyzeWindow(
       longestClosedMs: 0,
       longestClosedEndedAt: null,
       windowSpanMs: 0,
+      observedMs: 0,
       saturated: false,
       blinkCount: 0,
       meanBlinkMs: null,
@@ -64,6 +76,9 @@ export function analyzeWindow(
   let longestClosedMs = 0;
   let longestClosedEndedAt: number | null = null;
   const runs: number[] = [];
+  // 샘플이 끊긴 동안은 관측한 시간이 아니다. 여기에 더하지 않는다.
+  let observedMs = 0;
+  let prevT: number | null = null;
 
   const closeRun = (): void => {
     if (runStart === null) return;
@@ -79,9 +94,17 @@ export function analyzeWindow(
   };
 
   for (const sample of windowSamples) {
+    const gap = prevT === null ? null : sample.t - prevT;
+    // 공백은 관측하지 않은 구간이다. 감김 구간을 끊는 이유는 missing과 같다 —
+    // 보지 못한 시간을 감고 있던 시간으로 셀 수는 없다.
+    const gapped = gap !== null && gap > MAX_SAMPLE_GAP_MS;
+    if (gap !== null && gap > 0 && gap <= MAX_SAMPLE_GAP_MS) observedMs += gap;
+    prevT = sample.t;
+
     if (sample.state === 'closed') {
       closed += 1;
       valid += 1;
+      if (gapped) closeRun();
       if (runStart === null) runStart = sample.t;
       runEnd = sample.t;
     } else {
@@ -99,8 +122,10 @@ export function analyzeWindow(
   const value = validRatio >= MIN_VALID_RATIO && valid > 0 ? closed / valid : null;
   const meanBlinkMs =
     runs.length > 0 ? runs.reduce((sum, ms) => sum + ms, 0) / runs.length : null;
+  // span이 아니라 실제로 관측한 시간으로 판정한다. 탭이 숨겨져 캡처가 멈춘 1분을
+  // "1분간 눈을 감고 있었다"로 보고하지 않기 위해서다.
   const saturated =
-    value !== null && value >= SATURATION_PERCLOS && windowSpanMs >= windowMs * SATURATION_MIN_SPAN;
+    value !== null && value >= SATURATION_PERCLOS && observedMs >= windowMs * SATURATION_MIN_SPAN;
 
   return {
     value,
@@ -108,6 +133,7 @@ export function analyzeWindow(
     longestClosedMs,
     longestClosedEndedAt,
     windowSpanMs,
+    observedMs,
     saturated,
     blinkCount: runs.length,
     meanBlinkMs,
