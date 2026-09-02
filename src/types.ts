@@ -3,3 +3,10 @@ export interface Landmark {
   y: number;
   z: number;
 }
+
+export type FrameState = 'open' | 'closed' | 'missing';
+
+export interface FrameSample {
+  t: number;
+  state: FrameState;
+}
