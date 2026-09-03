@@ -13,6 +13,7 @@ describe('updateSessionStatus', () => {
     const result = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
       event: { type: 'microsleep', closedMs: 600, at: 1000 },
       analysis: HEALTHY,
+      rearmed: false,
       now: 1000,
     });
     expect(result.status).toBe('drowsy');
@@ -28,6 +29,7 @@ describe('updateSessionStatus', () => {
       const result = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
         event,
         analysis: HEALTHY,
+        rearmed: false,
         now: 1000,
       });
       expect(result.status).toBe('drowsy');
@@ -38,12 +40,14 @@ describe('updateSessionStatus', () => {
     const alerted = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
       event: { type: 'perclos', perclos: 0.2, at: 1000 },
       analysis: HEALTHY,
+      rearmed: false,
       now: 1000,
     });
     const later = updateSessionStatus(alerted.state, {
       event: null,
       // 재무장 조건에 못 미치는 값이라 시간으로만 풀려야 한다.
       analysis: { value: 0.1, observedMs: 58_000, windowSpanMs: 60_000 },
+      rearmed: false,
       now: 1000 + DROWSY_HOLD_MS - 1,
     });
     expect(later.status).toBe('drowsy');
@@ -53,25 +57,29 @@ describe('updateSessionStatus', () => {
     const alerted = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
       event: { type: 'perclos', perclos: 0.2, at: 1000 },
       analysis: HEALTHY,
+      rearmed: false,
       now: 1000,
     });
     const later = updateSessionStatus(alerted.state, {
       event: null,
       analysis: { value: 0.1, observedMs: 58_000, windowSpanMs: 60_000 },
+      rearmed: false,
       now: 1000 + DROWSY_HOLD_MS,
     });
     expect(later.status).toBe('present');
   });
 
-  it('PERCLOS가 재무장 값 아래로 내려오면 바로 present가 된다', () => {
+  it('코어가 다시 무장했을 때만 present로 돌아온다', () => {
     const alerted = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
       event: { type: 'perclos', perclos: 0.2, at: 1000 },
       analysis: HEALTHY,
+      rearmed: false,
       now: 1000,
     });
     const recovered = updateSessionStatus(alerted.state, {
       event: null,
       analysis: HEALTHY,
+      rearmed: true,
       now: 2000,
     });
     expect(recovered.status).toBe('present');
@@ -83,6 +91,7 @@ describe('updateSessionStatus', () => {
     const result = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
       event: null,
       analysis: null,
+      rearmed: false,
       now: 1000,
     });
     expect(result.status).toBe('unmeasurable');
@@ -92,6 +101,7 @@ describe('updateSessionStatus', () => {
     const result = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
       event: null,
       analysis: { value: null, observedMs: 58_000, windowSpanMs: 60_000 },
+      rearmed: false,
       now: 1000,
     });
     expect(result.status).toBe('unmeasurable');
@@ -103,6 +113,7 @@ describe('updateSessionStatus', () => {
     const result = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
       event: null,
       analysis: { value: 0.02, observedMs: 10_000, windowSpanMs: 60_000 },
+      rearmed: false,
       now: 1000,
     });
     expect(result.status).toBe('unmeasurable');
@@ -113,6 +124,7 @@ describe('updateSessionStatus', () => {
     const result = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
       event: { type: 'microsleep', closedMs: 800, at: 1000 },
       analysis: null,
+      rearmed: false,
       now: 1000,
     });
     expect(result.status).toBe('drowsy');
@@ -123,16 +135,38 @@ describe('updateSessionStatus', () => {
     const alerted = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
       event: { type: 'saturated', perclos: 1, at: 1000 },
       analysis: HEALTHY,
+      rearmed: false,
       now: 1000,
     });
-    const lost = updateSessionStatus(alerted.state, { event: null, analysis: null, now: 2000 });
+    const lost = updateSessionStatus(alerted.state, { event: null, analysis: null, rearmed: false, now: 2000 });
     expect(lost.status).toBe('unmeasurable');
+  });
+
+  it('코어 쿨다운 중에는 PERCLOS가 낮아도 drowsy를 유지한다', () => {
+    // 고립된 미세수면 하나는 60초 창에서 PERCLOS가 1%도 안 된다. 임계값만
+    // 보면 경고 다음 틱에 바로 present가 되어, 5초 주기 전송에 걸릴 확률이
+    // 1/5로 떨어진다. 남이 깨워야 하는 대표 사례가 방에 안 알려지는 것이다.
+    const alerted = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
+      event: { type: 'microsleep', closedMs: 600, at: 1000 },
+      analysis: HEALTHY,
+      rearmed: false,
+      now: 1000,
+    });
+    const nextTick = updateSessionStatus(alerted.state, {
+      event: null,
+      // PERCLOS는 이미 재무장 값 아래다. 그래도 코어는 쿨다운 중이라 무장하지 않았다.
+      analysis: { value: 0.008, observedMs: 58_000, windowSpanMs: 60_000 },
+      rearmed: false,
+      now: 2000,
+    });
+    expect(nextTick.status).toBe('drowsy');
   });
 
   it('아무 일도 없으면 present다', () => {
     const result = updateSessionStatus(INITIAL_SESSION_STATUS_STATE, {
       event: null,
       analysis: HEALTHY,
+      rearmed: false,
       now: 1000,
     });
     expect(result.status).toBe('present');

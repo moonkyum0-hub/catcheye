@@ -228,6 +228,9 @@ async function main(): Promise<void> {
 
       const next = updateSessionStatus(statusState, {
         event: alert.event,
+        // 코어가 실제로 무장했는지를 넘긴다. PERCLOS 임계값만으로 판단하면
+        // 미세수면 직후 곧바로 present가 되어 방이 그 사실을 모른다.
+        rearmed: alertState.armed,
         analysis: needsRecalibration
           ? null
           : {

@@ -62,6 +62,14 @@ export function connectSession(
           handlers.onWakeRequest(message.fromName);
           break;
         case 'error':
+          // 서버가 하트비트 만료로 우리를 방에서 지웠다. 소켓은 살아 있어서
+          // 재연결도 일어나지 않으므로, 다시 참여하지 않으면 영영 돌아가지 못한다.
+          // 백그라운드 탭은 인터벌이 분당 1회까지 조여져 30초 만료에 쉽게 걸린다.
+          if (message.code === 'not-joined') {
+            send({ type: 'join', roomCode, name });
+            send({ type: 'state', status });
+            break;
+          }
           handlers.onError(message.code);
           break;
       }
@@ -79,7 +87,11 @@ export function connectSession(
 
   return {
     setStatus(next) {
+      if (next === status) return;
       status = next;
+      // 전이는 즉시 보낸다. 5초 인터벌은 하트비트로만 남긴다. 짧은 상태가
+      // 주기에 인질로 잡히면 미세수면처럼 잠깐 뜨는 상태를 방이 놓친다.
+      send({ type: 'state', status });
     },
     wake(targetId) {
       send({ type: 'wake', targetId });

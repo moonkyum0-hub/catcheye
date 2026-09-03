@@ -1,4 +1,4 @@
-import { PERCLOS_REARM, type AlertEvent } from './alertPolicy';
+import type { AlertEvent } from './alertPolicy';
 import type { Status } from '../shared/protocol';
 
 /** 마지막 경고로부터 이 시간이 지나야 drowsy가 풀린다. */
@@ -22,6 +22,15 @@ export interface SessionStatusInput {
   event: AlertEvent | null;
   /** 카메라 실패·보정 미완료·재보정 필요면 null. */
   analysis: AnalysisSummary | null;
+  /**
+   * 코어의 경고 상태기계가 다시 무장했는지(`AlertState.armed`).
+   *
+   * PERCLOS가 재무장 값 아래라는 것만으로는 회복이 아니다. 코어는 쿨다운이
+   * 끝나야 무장하는데, 고립된 미세수면 하나는 60초 창에서 PERCLOS가 1%도
+   * 안 되므로 경고 직후부터 임계값 아래다. 임계값만 보면 drowsy가 딱 한 틱
+   * 살아 있다가 사라져, 5초 주기 전송에 걸릴 확률이 1/5로 떨어진다.
+   */
+  rearmed: boolean;
   now: number;
 }
 
@@ -38,7 +47,7 @@ export function updateSessionStatus(
   state: Readonly<SessionStatusState>,
   input: SessionStatusInput,
 ): { state: SessionStatusState; status: Status } {
-  const { event, analysis, now } = input;
+  const { event, analysis, rearmed, now } = input;
 
   // 경고는 실제 데이터에서 나왔다. 측정이 끊긴 틱이어도 믿는다.
   if (event !== null) {
@@ -46,13 +55,14 @@ export function updateSessionStatus(
   }
 
   // 측정을 믿을 수 없으면 회복 판정도 할 수 없다. 커버리지가 낮을 때의
-  // value는 정상처럼 보이지만 근거가 없으므로 재무장에 쓰면 안 된다.
+  // value는 정상처럼 보이지만 근거가 없으므로 회복 판정에 쓰면 안 된다.
   if (!isMeasurable(analysis)) {
     return { state, status: 'unmeasurable' };
   }
 
-  // 코어가 재무장할 만큼 회복했으면 붙잡아 둘 이유가 없다.
-  if (analysis !== null && analysis.value !== null && analysis.value < PERCLOS_REARM) {
+  // 코어가 실제로 다시 무장했을 때만 회복으로 본다. 임계값만 보면
+  // 미세수면 직후 곧바로 present가 되어 아무도 그 사람을 깨우지 못한다.
+  if (rearmed) {
     return { state: { lastAlertAt: null }, status: 'present' };
   }
 
