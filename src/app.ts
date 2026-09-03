@@ -11,6 +11,12 @@ import {
   type SessionStatusState,
 } from './sessionStatus';
 import { connectSession, type Session } from './session';
+import {
+  INSECURE_CONTEXT_GUIDANCE,
+  cameraGuidance,
+  isSecureForCamera,
+  type Guidance,
+} from './cameraGuidance';
 import type { ParticipantView, Status } from '../shared/protocol';
 import type { FrameSample } from './types';
 
@@ -25,14 +31,9 @@ const STATUS_LABEL: Record<Status, string> = {
   unmeasurable: '측정 불가',
 };
 
-const CAMERA_MESSAGE = {
-  'permission-denied': '카메라 권한이 거부됐습니다.',
-  'no-device': '카메라를 찾을 수 없습니다.',
-  'device-busy': '다른 앱이 카메라를 쓰고 있습니다. 화상통화 앱을 확인해 주세요.',
-  'constraints-unsatisfiable': '이 카메라가 요청한 해상도를 지원하지 않습니다.',
-  'playback-failed': '카메라 영상을 재생하지 못했습니다.',
-  unknown: '카메라를 열지 못했습니다.',
-} as const;
+function renderGuidance(guidance: Guidance): void {
+  render([guidance.headline, '', ...guidance.steps.map((step) => `· ${step}`)]);
+}
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('#app 요소가 필요하다');
@@ -74,9 +75,19 @@ function playAlarm(): void {
 async function main(): Promise<void> {
   startButton.disabled = true;
 
+  // 권한을 요청하기 전에 요청이 가능한 주소인지부터 본다. 보안 컨텍스트가
+  // 아니면 브라우저는 권한 창을 띄우지도 않고 조용히 거부한다.
+  if (!isSecureForCamera(window.location.protocol, window.location.hostname)) {
+    renderGuidance(INSECURE_CONTEXT_GUIDANCE);
+    startButton.disabled = false;
+    return;
+  }
+
+  render(['카메라 권한을 요청합니다. 브라우저가 물으면 "허용"을 눌러 주세요.']);
+
   const camera = await startCamera();
   if (!camera.ok) {
-    render([CAMERA_MESSAGE[camera.error]]);
+    renderGuidance(cameraGuidance(camera.error));
     startButton.disabled = false;
     return;
   }
