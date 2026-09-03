@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { createServer } from 'node:https';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
   createRoomsState,
@@ -16,7 +18,17 @@ let state: RoomsState = createRoomsState();
 const sockets = new Map<string, WebSocket>();
 let nextConnectionId = 1;
 
-const server = new WebSocketServer({ port: PORT });
+const KEY = 'certs/key.pem';
+const CERT = 'certs/cert.pem';
+const secure = existsSync(KEY) && existsSync(CERT);
+
+// https 페이지는 평문 ws:// 연결을 열 수 없다(혼합 콘텐츠). 앱을 https로 띄우면
+// 이 서버도 wss여야 하므로, 인증서가 있으면 같은 것을 써서 TLS로 올린다.
+const server = secure
+  ? new WebSocketServer({
+      server: createServer({ key: readFileSync(KEY), cert: readFileSync(CERT) }).listen(PORT),
+    })
+  : new WebSocketServer({ port: PORT });
 
 function send(connectionId: string, message: ServerMessage): void {
   const socket = sockets.get(connectionId);
@@ -90,4 +102,4 @@ setInterval(() => {
   flush(step.outbound);
 }, TICK_MS);
 
-console.log(`ws server listening on :${PORT}`);
+console.log(`${secure ? 'wss' : 'ws'} server listening on :${PORT}`);

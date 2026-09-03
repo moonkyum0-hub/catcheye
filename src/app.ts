@@ -23,7 +23,10 @@ import type { FrameSample } from './types';
 const OPEN_PHASE_MS = 15_000;
 const CLOSED_PHASE_MS = 3_000;
 const DRIFT_WINDOW_MS = 300_000;
-const SERVER_URL = `ws://${window.location.hostname}:8787`;
+// https 페이지에서 평문 ws://를 열면 브라우저가 혼합 콘텐츠로 차단한다.
+// 페이지와 같은 방식을 따라간다.
+const WS_SCHEME = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const SERVER_URL = `${WS_SCHEME}//${window.location.hostname}:8787`;
 
 const STATUS_LABEL: Record<Status, string> = {
   present: '재중',
@@ -245,6 +248,11 @@ async function main(): Promise<void> {
       render([
         `내 상태: ${STATUS_LABEL[next.status]}${needsRecalibration ? ' (재보정 필요 — 새로고침 후 다시 시작하세요)' : ''}`,
         `서버: ${connected ? '연결됨' : '끊김'}`,
+        // wss는 인증서를 거부당해도 브라우저가 아무것도 묻지 않고 조용히 끊는다.
+        // 자체 서명 인증서를 쓸 때 가장 흔한 원인이므로 직접 짚어 준다.
+        !connected && WS_SCHEME === 'wss:'
+          ? `· 새 탭에서 https://${window.location.hostname}:8787 을 한 번 열어 인증서 경고를 통과시키세요.`
+          : '',
         `PERCLOS: ${analysis.value === null ? '–' : `${(analysis.value * 100).toFixed(1)}%`}`,
         `유효 프레임: ${(analysis.validRatio * 100).toFixed(0)}%`,
         `관측 커버리지: ${coverage}`,
