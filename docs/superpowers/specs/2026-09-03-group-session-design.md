@@ -63,7 +63,7 @@ type Status = 'present' | 'drowsy' | 'unmeasurable';
 | 방향 | 메시지 | 내용 |
 |---|---|---|
 | C→S | `join` | 방 코드, 표시 이름 |
-| C→S | `state` | `Status`. 주기적으로 보내며 하트비트를 겸한다 |
+| C→S | `state` | `Status`. **5초마다** 보내며 하트비트를 겸한다 |
 | C→S | `wake` | 깨울 대상 참가자 id |
 | S→C | `joined` | 내 id와 현재 참가자 목록 |
 | S→C | `participants` | 변경이 있을 때만 브로드캐스트 |
@@ -108,7 +108,8 @@ type Status = 'present' | 'drowsy' | 'unmeasurable';
 
 상태가 아니라 별개 축이다.
 
-- 15초 무소식 → `disconnected` 표시
+- 클라이언트는 `state`를 5초마다 보낸다. 아래 판정은 그 주기를 전제한다
+- 15초 무소식(3회 연속 누락) → `disconnected` 표시
 - 30초 무소식 → 목록에서 제거
 - `disconnected`인 사람은 깨우기 대상이 아니다. 전달이 안 되기 때문이다
 
