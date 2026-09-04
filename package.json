@@ -10,10 +10,12 @@
     "check": "tsc --noEmit && vitest run",
     "assets": "node scripts/copy-assets.mjs",
     "server": "tsx server/index.ts",
-    "cert": "node scripts/make-cert.mjs"
+    "cert": "node scripts/make-cert.mjs",
+    "build:site": "vite build"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",
+    "deno": "^2.9.6",
     "selfsigned": "^5.5.0",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",

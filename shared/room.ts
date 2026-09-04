@@ -1,4 +1,4 @@
-import type { ClientMessage, ErrorCode, ParticipantView, ServerMessage, Status } from './protocol';
+import type { ClientMessage, ErrorCode, ParticipantView, ServerMessage, Status } from './protocol.ts';
 
 /** 이 시간 무소식이면 연결이 끊긴 것으로 표시한다. state 전송 주기 5초의 3배. */
 export const DISCONNECT_AFTER_MS = 15_000;

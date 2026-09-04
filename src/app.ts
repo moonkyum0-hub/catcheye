@@ -26,7 +26,10 @@ const DRIFT_WINDOW_MS = 300_000;
 // https 페이지에서 평문 ws://를 열면 브라우저가 혼합 콘텐츠로 차단한다.
 // 페이지와 같은 방식을 따라간다.
 const WS_SCHEME = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const SERVER_URL = `${WS_SCHEME}//${window.location.hostname}:8787`;
+// 배포할 때는 VITE_SERVER_URL로 방 서버를 가리킨다(예: wss://perclos.deno.dev).
+// 없으면 로컬 개발용으로 같은 호스트의 8787을 본다.
+const SERVER_URL =
+  import.meta.env.VITE_SERVER_URL ?? `${WS_SCHEME}//${window.location.hostname}:8787`;
 
 const STATUS_LABEL: Record<Status, string> = {
   present: '재중',

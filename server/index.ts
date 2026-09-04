@@ -9,10 +9,15 @@ import {
   type Outbound,
   type RoomsState,
 } from '../shared/room';
-import type { ClientMessage, ServerMessage } from '../shared/protocol';
+import { parseClientMessage } from '../shared/parseClientMessage';
+import type { ServerMessage } from '../shared/protocol';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const TICK_MS = 1000;
+/** ws 기본값은 100MiB다. 이 프로토콜의 메시지는 그 근처도 가지 않는다. */
+const MAX_PAYLOAD_BYTES = 4096;
+/** 이 주기로 ping을 보내고, 다음 주기까지 pong이 없으면 소켓을 끊는다. */
+const PING_INTERVAL_MS = 30_000;
 
 let state: RoomsState = createRoomsState();
 const sockets = new Map<string, WebSocket>();
@@ -27,8 +32,15 @@ const secure = existsSync(KEY) && existsSync(CERT);
 const server = secure
   ? new WebSocketServer({
       server: createServer({ key: readFileSync(KEY), cert: readFileSync(CERT) }).listen(PORT),
+      maxPayload: MAX_PAYLOAD_BYTES,
     })
-  : new WebSocketServer({ port: PORT });
+  : new WebSocketServer({ port: PORT, maxPayload: MAX_PAYLOAD_BYTES });
+
+// 기동 실패(포트 점유 등)를 미처리 이벤트로 프로세스가 죽지 않게 한다.
+server.on('error', (error) => {
+  console.error('서버를 시작하지 못했습니다:', error.message);
+  process.exit(1);
+});
 
 function send(connectionId: string, message: ServerMessage): void {
   const socket = sockets.get(connectionId);
@@ -42,43 +54,15 @@ function flush(outbound: Outbound[]): void {
   }
 }
 
-/** 신뢰할 수 없는 입력이다. 형태를 확인하고 아니면 버린다. */
-function parseClientMessage(raw: string): ClientMessage | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== 'object' || parsed === null || !('type' in parsed)) return null;
-  const candidate = parsed as { type: unknown };
-  switch (candidate.type) {
-    case 'join': {
-      const { roomCode, name } = parsed as { roomCode?: unknown; name?: unknown };
-      if (typeof roomCode !== 'string' || typeof name !== 'string') return null;
-      return { type: 'join', roomCode, name: name.slice(0, 40) };
-    }
-    case 'state': {
-      const { status } = parsed as { status?: unknown };
-      if (status !== 'present' && status !== 'drowsy' && status !== 'unmeasurable') return null;
-      return { type: 'state', status };
-    }
-    case 'wake': {
-      const { targetId } = parsed as { targetId?: unknown };
-      if (typeof targetId !== 'string') return null;
-      return { type: 'wake', targetId };
-    }
-    case 'leave':
-      return { type: 'leave' };
-    default:
-      return null;
-  }
-}
+/** 마지막 pong을 받은 소켓들. 반열림 연결은 close 이벤트가 영영 오지 않는다. */
+const alive = new WeakSet<WebSocket>();
 
 server.on('connection', (socket) => {
   const connectionId = `c${nextConnectionId}`;
   nextConnectionId += 1;
   sockets.set(connectionId, socket);
+  alive.add(socket);
+  socket.on('pong', () => alive.add(socket));
 
   socket.on('message', (data) => {
     const message = parseClientMessage(data.toString());
@@ -101,5 +85,19 @@ setInterval(() => {
   state = step.state;
   flush(step.outbound);
 }, TICK_MS);
+
+// 참가자에겐 30초 만료가 있는데 소켓에는 없었다. pong이 없는 소켓을 끊지 않으면
+// 반열림 연결이 프로세스 수명 내내 쌓인다.
+setInterval(() => {
+  for (const [connectionId, socket] of sockets) {
+    if (!alive.has(socket)) {
+      sockets.delete(connectionId);
+      socket.terminate();
+      continue;
+    }
+    alive.delete(socket);
+    socket.ping();
+  }
+}, PING_INTERVAL_MS);
 
 console.log(`${secure ? 'wss' : 'ws'} server listening on :${PORT}`);

@@ -17,6 +17,9 @@ const https =
     : undefined;
 
 export default defineConfig({
+  // GitHub Pages는 https://<user>.github.io/<repo>/ 로 서빙하므로 하위 경로가 붙는다.
+  // 로컬에서는 루트다.
+  base: process.env.BASE_PATH ?? '/',
   server: {
     // 다른 기기에서 접속하려면 루프백이 아니라 모든 인터페이스에 바인딩해야 한다.
     host: true,

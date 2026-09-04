@@ -1,0 +1,63 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 한 번에 하나만. 진행 중인 것을 취소하지는 않는다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: 검증
+        run: npm run check
+
+      # 모델과 WASM은 저장소에 넣지 않는다(3.8MB + 런타임 일습).
+      # 빌드할 때 받아온다.
+      - name: 에셋 준비
+        run: |
+          npm run assets
+          curl -fL --retry 3 -o public/models/face_landmarker.task \
+            https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
+          test "$(stat -c%s public/models/face_landmarker.task)" -gt 3000000
+
+      - name: 빌드
+        env:
+          # 리포 이름이 경로에 붙는다: https://<user>.github.io/perclos/
+          BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_SERVER_URL: ${{ vars.VITE_SERVER_URL }}
+        run: npm run build:site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

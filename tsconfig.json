@@ -13,12 +13,19 @@
     "noUnusedLocals": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "types": [
+      "vite/client"
+    ]
   },
   "include": [
     "src",
     "scripts",
     "shared",
     "server"
+  ],
+  "exclude": [
+    "server/deno.ts"
   ]
 }
